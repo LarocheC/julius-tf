@@ -3,6 +3,17 @@ on:
   push:
     branches: [ main ]
 
+# Allow the workflow to publish to GitHub Pages via the deploy-pages action.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one Pages deployment at a time; newer pushes supersede in-flight ones.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -14,22 +25,25 @@ jobs:
         enable-cache: true
 
     - name: Install dependencies
-      run: |
-        uv sync --extra dev
-        git config --global user.email "clement.laroche@gmail.com"
-        git config --global user.name "julius-tf (autodoc)"
-
-    - name: Reset branch
-      run: |
-        git branch -f gh-docs main
-        git checkout gh-docs
+      run: uv sync --extra dev
 
     - name: Make docs
-      run: |
-        uv run --extra dev make docs
-        git add -f docs
-        git commit -m docs
+      run: uv run --extra dev make docs
 
-    - name: Push branch
-      run: |
-        git push -f -u origin gh-docs
+    - name: Upload Pages artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        # `make docs` renders pdoc3 output (and logo.png) into docs/;
+        # the site is served at <pages-url>/julius/index.html.
+        path: docs
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4

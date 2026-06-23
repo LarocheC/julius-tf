@@ -720,7 +720,7 @@ wheels = [
 ]
 
 [[package]]
-name = "julius"
+name = "julius-tf"
 version = "0.2.8"
 source = { editable = "." }
 dependencies = [
