@@ -1,4 +1,4 @@
-# File under the MIT license, see https://github.com/LarocheC/julius-tf/blob/main/LICENSE for details.
+# File under the MIT license, see the LICENSE file for details.
 # Original author: Alexandre Défossez (adefossez), 2020
 # TensorFlow port: Clément Laroche (LarocheC), 2026
 
