@@ -6,7 +6,7 @@ def run_bench(name, *args, device="cpu"):
     args = list(args)
     args += ["-d", device]
     if device == "cuda" and not tf.config.list_physical_devices('GPU'):
-        return "Not available /!\\"
+        return "_Not benchmarked: no CUDA GPU available in this environment._"
     return sp.check_output(["python3", "-m", f"bench.{name}"] + args).decode('utf8')
 
 
@@ -23,8 +23,10 @@ checking how far we are.
 We compare `julius.resample` to `resampy`, on an input of size (32, 8 * 44100),
 i.e. a batch of size 16 of 8 second of audio at 44.1kHz.
 We use the same number of zero crossing as `resampy` for this benchmark.
-The small delta is probably
-due to the different window function used.
+The reported delta is the mean absolute difference against `resampy`'s default
+`kaiser_best` filter; it is dominated by the different anti-aliasing window the
+two libraries use. With matched filter parameters the two agree to within ~3%
+(see `tests/test_resample.py::test_resampy`).
 
 
 On CPU we have:

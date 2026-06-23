@@ -125,10 +125,22 @@ instance to perform parametric EQ (see [Usage](#usage) above).
 ## Benchmarks
 
 You can find speed tests (and comparisons to reference implementations) on the
-[benchmark][bench]. The CPU benchmarks are run on a Mac Book Pro 2020, with a 2.4 GHz
-8-core intel CPU i9. The GPUs benchmark are run on Nvidia V100 with 16GB of memory.
-We also compare the validity of our implementations, as compared to reference ones like `resampy`
-or `tf.nn.conv1d`.
+[benchmark][bench]. The numbers there were measured on a 13th Gen Intel Core
+i7-13800H (10 cores / 20 threads) with TensorFlow 2.21; the GPU tables are not
+filled in because no CUDA GPU was available in that environment (regenerate with
+`python3 -m bench.gen` on a GPU machine to populate them). We also compare the
+validity of our implementations against reference ones like `resampy` or
+`tf.nn.conv1d`.
+
+A few highlights from the CPU run:
+
+- **Resampling** is consistently much faster than `resampy` — e.g. ~29 ms vs
+  ~4100 ms going from sample rate 4 to 5 — except for the pathological case of
+  large coprime rates (20001 → 30001), where the algorithm is not designed to be
+  fast.
+- **FFTConv1d** overtakes direct `tf.nn.conv1d` as the kernel grows: at kernel
+  size 2048 it is ~127 ms vs ~7800 ms, while staying numerically close
+  (delta ~4.5e-04).
 
 
 
