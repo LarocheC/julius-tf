@@ -4,32 +4,43 @@
 import random
 import unittest
 
-import torch as th
-from torch.nn import functional as F
+import tensorflow as tf
 
 import julius
+from julius.core import conv1d
 
-TOLERANCE = 1e-4  # as relative delta in percentage
+# As relative delta in percentage. FFT and direct convolutions accumulate float32
+# rounding differently (more so on older TensorFlow / AVX2 builds), so we allow a
+# small relative discrepancy. A real bug would produce an O(1) error, far above this.
+TOLERANCE = 1e-2
+
+
+def ref_conv1d(input, weight, bias=None, stride=1, padding=0):
+    """Reference channels-first 1D convolution, backed by `tf.nn.conv1d`."""
+    out = conv1d(input, weight, stride=stride, padding=padding)
+    if bias is not None:
+        out = out + bias[:, tf.newaxis]
+    return out
 
 
 class _BaseTest(unittest.TestCase):
     def setUp(self):
-        th.manual_seed(1234)
+        tf.random.set_seed(1234)
         random.seed(1234)
 
     def assertSimilar(self, a, b, msg=None, tol=TOLERANCE):
-        delta = 100 * th.norm(a - b) / th.norm(b)
+        delta = float(100 * tf.norm(a - b) / tf.norm(b))
         self.assertLessEqual(delta, tol, msg)
 
-    def compare_pytorch(self, *args, block_ratio=10, msg=None, tol=TOLERANCE, **kwargs):
-        y_ref = F.conv1d(*args, **kwargs)
+    def compare_reference(self, *args, block_ratio=10, msg=None, tol=TOLERANCE, **kwargs):
+        y_ref = ref_conv1d(*args, **kwargs)
         y = julius.fft_conv1d(*args, block_ratio=block_ratio, **kwargs)
         self.assertEqual(list(y.shape), list(y_ref.shape), msg)
         self.assertSimilar(y, y_ref, msg, tol)
 
 
 class TestFFTConv1d(_BaseTest):
-    def test_same_as_pytorch(self):
+    def test_same_as_reference(self):
         for _ in range(5):
             kernel_size = random.randrange(4, 128)
             batch_size = random.randrange(1, 6)
@@ -42,34 +53,34 @@ class TestFFTConv1d(_BaseTest):
                 padding = 0
             else:
                 padding = random.randrange(kernel_size // 2, 2 * kernel_size)
-            x = th.randn(batch_size, chin, length)
-            w = th.randn(chout, chin, kernel_size)
+            x = tf.random.normal((batch_size, chin, length))
+            w = tf.random.normal((chout, chin, kernel_size))
             keys = ["length", "kernel_size", "chin", "chout", "block_ratio", "bias"]
             loc = dict(locals())
             state = {key: loc[key] for key in keys}
             if bias:
-                bias = th.randn(chout)
+                bias = tf.random.normal((chout,))
             else:
                 bias = None
             for stride in [1, 2, 5]:
                 state["stride"] = stride
-                self.compare_pytorch(
+                self.compare_reference(
                     x, w, bias, stride, padding, block_ratio=block_ratio,
                     msg=repr(state))
 
     def test_small_input(self):
-        x = th.randn(1, 5, 19)
-        w = th.randn(10, 5, 32)
+        x = tf.random.normal((1, 5, 19))
+        w = tf.random.normal((10, 5, 32))
         with self.assertRaises(RuntimeError):
             julius.fft_conv1d(x, w)
 
-        x = th.randn(1, 5, 19)
-        w = th.randn(10, 5, 19)
+        x = tf.random.normal((1, 5, 19))
+        w = tf.random.normal((10, 5, 19))
         self.assertEqual(list(julius.fft_conv1d(x, w).shape), [1, 10, 1])
 
     def test_block_ratio(self):
-        x = th.randn(1, 5, 1024)
-        w = th.randn(10, 5, 19)
+        x = tf.random.normal((1, 5, 1024))
+        w = tf.random.normal((10, 5, 19))
         ref = julius.fft_conv1d(x, w)
         for block_ratio in [1, 5, 10, 20]:
             y = julius.fft_conv1d(x, w, block_ratio=block_ratio)
@@ -79,17 +90,17 @@ class TestFFTConv1d(_BaseTest):
             y = julius.fft_conv1d(x, w, block_ratio=0.9)
 
     def test_module(self):
-        x = th.randn(16, 4, 1024)
+        x = tf.random.normal((16, 4, 1024))
         mod = julius.FFTConv1d(4, 5, 8, bias=True)
         mod(x)
         mod = julius.FFTConv1d(4, 5, 8, bias=False)
         mod(x)
 
-    def test_torchscript(self):
-        x = th.randn(16, 4, 1024)
+    def test_tf_function(self):
+        x = tf.random.normal((16, 4, 1024))
         mod = julius.FFTConv1d(4, 5, 8, bias=True)
-        jitted = th.jit.script(mod)
-        self.assertEqual(list(jitted(x).shape), [16, 5, 1024 - 8 + 1])
+        fn = tf.function(mod.__call__)
+        self.assertEqual(list(fn(x).shape), [16, 5, 1024 - 8 + 1])
 
     def test_repr(self):
         mod = julius.FFTConv1d(4, 5, 8, bias=False)

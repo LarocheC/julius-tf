@@ -3,6 +3,8 @@
 
 import argparse
 
+import tensorflow as tf
+
 from julius import lowpass_filter
 from julius.core import pure_tone, volume
 from julius.utils import Chrono, MarkdownTable
@@ -10,13 +12,15 @@ from julius.utils import Chrono, MarkdownTable
 
 def test(table, freq, zeros, fft=None, device="cpu"):
     sr = 44_100
+    tf_device = "/GPU:0" if device == "cuda" else "/CPU:0"
 
     attns = []
     for ratio in [0.9, 1, 1.1]:
-        x = pure_tone(ratio * freq * sr, sr, 4, device=device)
-        with Chrono() as chrono:
-            y = lowpass_filter(x, freq, fft=fft, zeros=zeros)
-        attns.append(format(volume(y) - volume(x), ".2f"))
+        with tf.device(tf_device):
+            x = pure_tone(ratio * freq * sr, sr, 4)
+            with Chrono() as chrono:
+                y = lowpass_filter(x, freq, fft=fft, zeros=zeros)
+            attns.append(format(float(volume(y) - volume(x)), ".2f"))
 
     table.line([freq] + attns + [int(1000 * chrono.duration)])
 

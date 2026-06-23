@@ -7,15 +7,14 @@ FIR windowed sinc lowpass filters.
 import math
 from typing import Sequence, Optional
 
-import torch
-from torch.nn import functional as F
+import tensorflow as tf
 
-from .core import sinc
+from .core import sinc, conv1d, pad_replicate
 from .fftconv import fft_conv1d
 from .utils import simple_repr
 
 
-class LowPassFilters(torch.nn.Module):
+class LowPassFilters(tf.Module):
     """
     Bank of low pass filters. Note that a high pass or band pass filter can easily
     be implemented by substracting a same signal processed with low pass filters with different
@@ -42,8 +41,8 @@ class LowPassFilters(torch.nn.Module):
             This is likely appropriate for most use. Lower values
             will result in a faster filter, but with a slower attenuation around the
             cutoff frequency.
-        fft (bool or None): if True, uses `julius.fftconv` rather than PyTorch convolutions.
-            If False, uses PyTorch convolutions. If None, either one will be chosen automatically
+        fft (bool or None): if True, uses `julius.fftconv` rather than a regular convolution.
+            If False, uses a regular convolution. If None, either one will be chosen automatically
             depending on the effective filter size.
 
 
@@ -63,8 +62,9 @@ class LowPassFilters(torch.nn.Module):
         - Output: `[F, *, T']`, with `T'=T` if `pad` is True and `stride` is 1, and
             `F` is the numer of cutoff frequencies.
 
+    >>> import tensorflow as tf
     >>> lowpass = LowPassFilters([1/4])
-    >>> x = torch.randn(4, 12, 21, 1024)
+    >>> x = tf.random.normal((4, 12, 21, 1024))
     >>> list(lowpass(x).shape)
     [1, 4, 12, 21, 1024]
     """
@@ -84,38 +84,42 @@ class LowPassFilters(torch.nn.Module):
         if fft is None:
             fft = self.half_size > 32
         self.fft = fft
-        window = torch.hann_window(2 * self.half_size + 1, periodic=False)
-        time = torch.arange(-self.half_size, self.half_size + 1)
+        window = tf.signal.hann_window(2 * self.half_size + 1, periodic=False)
+        time = tf.range(-self.half_size, self.half_size + 1, dtype=tf.float32)
         filters = []
-        for cutoff in cutoffs:
+        for cutoff in self.cutoffs:
             if cutoff == 0:
-                filter_ = torch.zeros_like(time)
+                filter_ = tf.zeros_like(time)
             else:
                 filter_ = 2 * cutoff * window * sinc(2 * cutoff * math.pi * time)
                 # Normalize filter to have sum = 1, otherwise we will have a small leakage
                 # of the constant component in the input signal.
-                filter_ /= filter_.sum()
+                filter_ = filter_ / tf.reduce_sum(filter_)
             filters.append(filter_)
-        self.register_buffer("filters", torch.stack(filters)[:, None])
+        self.filters = tf.stack(filters)[:, tf.newaxis]
 
-    def forward(self, input):
-        shape = list(input.shape)
-        input = input.view(-1, 1, shape[-1])
-        if self.pad:
-            input = F.pad(input, (self.half_size, self.half_size), mode='replicate')
-        if self.fft:
-            out = fft_conv1d(input, self.filters, stride=self.stride)
+    def __call__(self, input):
+        shape = tf.shape(input)
+        static_length = input.shape[-1]
+        if static_length is None:
+            x = tf.reshape(input, tf.stack([-1, 1, shape[-1]]))
         else:
-            out = F.conv1d(input, self.filters, stride=self.stride)
-        shape.insert(0, len(self.cutoffs))
-        shape[-1] = out.shape[-1]
-        return out.permute(1, 0, 2).reshape(shape)
+            x = tf.reshape(input, [-1, 1, static_length])
+        if self.pad:
+            x = pad_replicate(x, self.half_size, self.half_size)
+        if self.fft:
+            out = fft_conv1d(x, self.filters, stride=self.stride)
+        else:
+            out = conv1d(x, self.filters, stride=self.stride)
+        out = tf.transpose(out, [1, 0, 2])  # [F, N, T']
+        new_shape = tf.concat([[len(self.cutoffs)], shape[:-1], [tf.shape(out)[-1]]], axis=0)
+        return tf.reshape(out, new_shape)
 
     def __repr__(self):
         return simple_repr(self)
 
 
-class LowPassFilter(torch.nn.Module):
+class LowPassFilter(tf.Module):
     """
     Same as `LowPassFilters` but applies a single low pass filter.
 
@@ -124,8 +128,9 @@ class LowPassFilter(torch.nn.Module):
         - Input: `[*, T]`
         - Output: `[*, T']`, with `T'=T` if `pad` is True and `stride` is 1.
 
+    >>> import tensorflow as tf
     >>> lowpass = LowPassFilter(1/4, stride=2)
-    >>> x = torch.randn(4, 124)
+    >>> x = tf.random.normal((4, 124))
     >>> list(lowpass(x).shape)
     [4, 62]
     """
@@ -155,23 +160,23 @@ class LowPassFilter(torch.nn.Module):
     def fft(self):
         return self._lowpasses.fft
 
-    def forward(self, input):
+    def __call__(self, input):
         return self._lowpasses(input)[0]
 
     def __repr__(self):
         return simple_repr(self)
 
 
-def lowpass_filters(input: torch.Tensor,  cutoffs: Sequence[float],
+def lowpass_filters(input: tf.Tensor,  cutoffs: Sequence[float],
                     stride: int = 1, pad: bool = True,
                     zeros: float = 8, fft: Optional[bool] = None):
     """
     Functional version of `LowPassFilters`, refer to this class for more information.
     """
-    return LowPassFilters(cutoffs, stride, pad, zeros, fft).to(input)(input)
+    return LowPassFilters(cutoffs, stride, pad, zeros, fft)(input)
 
 
-def lowpass_filter(input: torch.Tensor,  cutoff: float,
+def lowpass_filter(input: tf.Tensor,  cutoff: float,
                    stride: int = 1, pad: bool = True,
                    zeros: float = 8, fft: Optional[bool] = None):
     """

@@ -6,8 +6,8 @@
 .. image:: ../logo.png
 
 Julius contains different Digital Signal Processing algorithms implemented
-with PyTorch, so that they are differentiable and available on CUDA.
-Note that all the modules implemented here can be used with TorchScript.
+with TensorFlow, so that they are differentiable and available on GPU.
+Note that all the modules implemented here can be used inside a `tf.function`.
 
 For now, I have implemented:
 

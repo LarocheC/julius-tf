@@ -3,24 +3,26 @@
 
 import argparse
 
-import torch as th
-from torch.nn import functional as F
+import tensorflow as tf
 
 from julius import fft_conv1d
+from julius.core import conv1d
 from julius.utils import Chrono, MarkdownTable
 
 
-def test(table, kernel_size, block_ratio=5, device=None):
-    x = th.randn(32, 32, 1024 * 10).to(device)
-    w = th.randn(64, 32, kernel_size).to(device)
+def test(table, kernel_size, block_ratio=5, device="cpu"):
+    tf_device = "/GPU:0" if device == "cuda" else "/CPU:0"
+    with tf.device(tf_device):
+        x = tf.random.normal((32, 32, 1024 * 10))
+        w = tf.random.normal((64, 32, kernel_size))
 
-    with Chrono() as chrono_ref:
-        y_ref = F.conv1d(x, w)
+        with Chrono() as chrono_ref:
+            y_ref = conv1d(x, w)
 
-    with Chrono() as chrono_fft:
-        y_fft = fft_conv1d(x, w, block_ratio=block_ratio)
+        with Chrono() as chrono_fft:
+            y_fft = fft_conv1d(x, w, block_ratio=block_ratio)
 
-    delta = format((y_ref - y_fft).abs().mean(), ".1e")
+        delta = format(float(tf.reduce_mean(tf.abs(y_ref - y_fft))), ".1e")
     table.line(
         [kernel_size,  int(1000 * chrono_fft.duration), int(1000 * chrono_ref.duration), delta])
 

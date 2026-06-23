@@ -1,12 +1,12 @@
-# Julius, fast PyTorch based DSP for audio and 1D signals
+# Julius, fast TensorFlow based DSP for audio and 1D signals
 
 ![linter badge](https://github.com/adefossez/julius/workflows/linter/badge.svg)
 ![tests badge](https://github.com/adefossez/julius/workflows/tests/badge.svg)
 ![cov badge](https://github.com/adefossez/julius/workflows/cov%3E90%25/badge.svg)
 
 Julius contains different Digital Signal Processing algorithms implemented
-with PyTorch, so that they are differentiable and available on CUDA.
-Note that all the modules implemented here can be used with TorchScript.
+with TensorFlow, so that they are differentiable and available on GPU.
+Note that all the modules implemented here can be used inside a `tf.function`.
 
 For now, I have implemented:
 
@@ -27,6 +27,9 @@ width="500px"></p>
 
 ## News
 
+- This fork ports the whole library from PyTorch to __TensorFlow__, with the goal of
+  contributing the algorithms as a feature for `tf.signal`. The public API is preserved:
+  modules are `tf.Module`s, callable just like before, and usable inside a `tf.function`.
 - 03/06/2026: __`julius` 0.2.8 released:__: Switching to pyproject.toml, now requires python >= 3.9. Bug fix with -O flag (thanks @aiknownc)
 - 19/09/2022: __`julius` 0.2.7 released:__: fixed ONNX compat (thanks @iver56). I know I missed the 0.2.6 one...
 - 28/07/2021: __`julius` 0.2.5 released:__: support for setting a custom output length when resampling.
@@ -52,9 +55,9 @@ to get you quickly started:
 
 ```python3
 import julius
-import torch
+import tensorflow as tf
 
-signal = torch.randn(6, 4, 1024)
+signal = tf.random.normal((6, 4, 1024))
 # Resample from a sample rate of 100 to 70. The old and new sample rate must be integers,
 # and resampling will be fast if they form an irreductible fraction with small numerator
 # and denominator (here 10 and 7). Any shape is supported, last dim is time.
@@ -71,7 +74,7 @@ convolved = conv(signal)
 bands = julius.split_bands(signal, n_bands=10, sample_rate=100)
 # Decomposition with n_bands frequency bands evenly spaced in mel space.
 # Input shape can be `[*, T]`, output will be `[n_bands, *, T]`.
-random_eq = (torch.rand(10, 1, 1, 1) * bands).sum(0)
+random_eq = tf.reduce_sum(tf.random.uniform((10, 1, 1, 1)) * bands, axis=0)
 ```
 
 ## Algorithms
@@ -90,8 +93,9 @@ Julius resampling is faster than resampy even on CPU, and when running on GPU it
 ### FFTConv1d
 
 Computing convolutions with very large kernels (>= 128) and a stride of 1 can be much faster
-using FFT. This implements the same API as `torch.nn.Conv1d` and `torch.nn.functional.conv1d`
-but with a FFT backend. Dilation and groups are not supported.
+using FFT. This implements the same API as `tf.keras.layers.Conv1D` / `tf.nn.conv1d`
+(using the channels-first `[B, C, T]` convention) but with a FFT backend. Dilation and groups
+are not supported.
 FFTConv will be faster on CPU even for relatively small tensors (a few dozen channels, kernel size
 of 128). On CUDA, due to the higher parallelism, regular convolution can be faster in many cases,
 but for kernel sizes above 128, for a large number of channels or batch size, FFTConv1d
@@ -115,7 +119,7 @@ You can find speed tests (and comparisons to reference implementations) on the
 [benchmark][bench]. The CPU benchmarks are run on a Mac Book Pro 2020, with a 2.4 GHz
 8-core intel CPU i9. The GPUs benchmark are run on Nvidia V100 with 16GB of memory.
 We also compare the validity of our implementations, as compared to reference ones like `resampy`
-or `torch.nn.Conv1d`.
+or `tf.nn.conv1d`.
 
 
 
@@ -123,8 +127,8 @@ or `torch.nn.Conv1d`.
 
 Clone this repository, then
 ```bash
-pip3 install .[dev]'
-python3 tests.py
+pip3 install '.[dev]'
+python3 -m unittest discover -s tests
 ```
 
 To run the benchmarks:

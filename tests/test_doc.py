@@ -1,7 +1,7 @@
 from doctest import testmod
 import unittest
 
-from julius import resample, fftconv, lowpass, bands, utils
+from julius import resample, fftconv, lowpass, filters, bands, utils
 
 
 class DocStringTest(unittest.TestCase):
@@ -13,6 +13,9 @@ class DocStringTest(unittest.TestCase):
 
     def test_lowpass(self):
         self.assertEqual(testmod(lowpass).failed, 0)
+
+    def test_filters(self):
+        self.assertEqual(testmod(filters).failed, 0)
 
     def test_bands(self):
         self.assertEqual(testmod(bands).failed, 0)
