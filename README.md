@@ -34,8 +34,10 @@ width="500px"></p>
 
 - `julius-tf` ports the whole library from PyTorch to __TensorFlow__. The public API of the
   original `julius` is preserved: modules are `tf.Module`s, callable just like before, and
-  usable inside a `tf.function`. Version numbers below track the upstream `julius` releases
+  usable inside a `tf.function`. The dated entries below are the upstream `julius` releases
   whose behavior this port reproduces.
+- 23/06/2026: __`julius-tf` 0.1.0:__ first release on PyPI — TensorFlow port reproducing
+  upstream `julius` 0.2.8. Install with `pip install julius-tf`.
 - 03/06/2026: __`julius` 0.2.8 released:__: Switching to pyproject.toml, now requires python >= 3.9. Bug fix with -O flag (thanks @aiknownc)
 - 19/09/2022: __`julius` 0.2.7 released:__: fixed ONNX compat (thanks @iver56). I know I missed the 0.2.6 one...
 - 28/07/2021: __`julius` 0.2.5 released:__: support for setting a custom output length when resampling.

@@ -1,0 +1,35 @@
+name: Publish
+
+# Publish to PyPI when a GitHub Release is published. Cut a release from a
+# tag (e.g. v0.1.0) and this builds the sdist+wheel and uploads them.
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # The `pypi` environment lets you scope the PyPI trusted publisher to it
+    # (and optionally require manual approval before a release goes out).
+    environment:
+      name: pypi
+      url: https://pypi.org/p/julius-tf
+    permissions:
+      # Mandatory for PyPI Trusted Publishing via OIDC; no API token needed.
+      id-token: write
+    steps:
+    - uses: actions/checkout@v4
+    - uses: astral-sh/setup-uv@v6
+      with:
+        python-version: "3.9"
+
+    - name: Build sdist and wheel
+      run: uv build
+
+    - name: Check distribution metadata
+      run: uvx twine check dist/*
+
+    - name: Publish to PyPI (Trusted Publishing)
+      # `--trusted-publishing always` fails loudly if OIDC isn't available
+      # instead of silently falling back to asking for a token.
+      run: uv publish --trusted-publishing always
