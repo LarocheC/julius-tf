@@ -4,7 +4,7 @@
 import random
 import unittest
 
-import torch as th
+import tensorflow as tf
 
 from julius import LowPassFilter, LowPassFilters, lowpass_filter, resample_frac
 from julius.core import pure_tone
@@ -16,7 +16,7 @@ def delta(a, b, ref, fraction=0.9):
     offset = (length - compare_length) // 2
     a = a[..., offset: offset + length]
     b = b[..., offset: offset + length]
-    return 100 * th.abs(a - b).mean() / ref.std()
+    return float(100 * tf.reduce_mean(tf.abs(a - b)) / tf.math.reduce_std(ref))
 
 
 TOLERANCE = 1  # Tolerance to errors as percentage of the std of the input signal
@@ -29,7 +29,7 @@ class _BaseTest(unittest.TestCase):
 
 class TestLowPassFilters(_BaseTest):
     def setUp(self):
-        th.manual_seed(1234)
+        tf.random.set_seed(1234)
         random.seed(1234)
 
     def test_keep_or_kill(self):
@@ -52,7 +52,7 @@ class TestLowPassFilters(_BaseTest):
 
     def test_same_as_downsample(self):
         for _ in range(10):
-            x = th.randn(2 * 3 * 4 * 100)
+            x = tf.random.normal((2 * 3 * 4 * 100,))
             rolloff = 0.945
             for old_sr in [2, 3, 4]:
                 y_resampled = resample_frac(x, old_sr, 1, rolloff=rolloff, zeros=16)
@@ -61,33 +61,29 @@ class TestLowPassFilters(_BaseTest):
 
     def test_fft_nofft(self):
         for _ in range(10):
-            x = th.randn(1024)
+            x = tf.random.normal((1024,))
             freq = random.uniform(0.01, 0.5)
             y_fft = lowpass_filter(x, freq, fft=True)
             y_ref = lowpass_filter(x, freq, fft=False)
             self.assertSimilar(y_fft, y_ref, x, f"freq={freq}", tol=0.01)
 
-    def test_torchscript(self):
-        x = th.randn(128)
+    def test_tf_function(self):
+        x = tf.random.normal((128,))
 
-        mod = LowPassFilters([0.1, 0.3])
-        jitted = th.jit.script(mod)
-        self.assertEqual(list(jitted(x).shape), [2, 128])
-
-        mod = LowPassFilters([0.1, 0.3], fft=True)
-        jitted = th.jit.script(mod)
-        self.assertEqual(list(jitted(x).shape), [2, 128])
+        for mod in [LowPassFilters([0.1, 0.3]), LowPassFilters([0.1, 0.3], fft=True)]:
+            fn = tf.function(mod.__call__)
+            self.assertEqual(list(fn(x).shape), [2, 128])
 
         mod = LowPassFilter(0.2)
-        jitted = th.jit.script(mod)
-        self.assertEqual(list(jitted(x).shape), [128])
+        fn = tf.function(mod.__call__)
+        self.assertEqual(list(fn(x).shape), [128])
 
     def test_constant(self):
-        x = th.ones(2048)
+        x = tf.ones((2048,))
         for zeros in [4, 10]:
             for freq in [0.01, 0.1]:
                 y_low = lowpass_filter(x, freq, zeros=zeros)
-                self.assertLessEqual((y_low - 1).abs().mean(), 1e-6, (zeros, freq))
+                self.assertLessEqual(float(tf.reduce_mean(tf.abs(y_low - 1))), 1e-6, (zeros, freq))
 
 
 if __name__ == '__main__':

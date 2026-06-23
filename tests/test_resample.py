@@ -1,27 +1,18 @@
 # File under the MIT license, see https://github.com/adefossez/julius/LICENSE for details.
 # Author: adefossez, 2020
-import importlib.util
-import os
-import tempfile
-import uuid
-
 import math
 import random
 import unittest
 
 import resampy
-import torch as th
+import tensorflow as tf
 
 from julius import resample, ResampleFrac
 
-is_onnxruntime_installed = importlib.util.find_spec("onnxruntime") is not None
-if not is_onnxruntime_installed:
-    print("Warning: onnxruntime is not installed. Some tests may be skipped")
-
 
 def pure_tone(freq, sr=128, dur=4):
-    time = th.arange(sr * dur).float() / sr
-    return th.cos(2 * math.pi * freq * time)
+    time = tf.range(int(sr * dur), dtype=tf.float32) / sr
+    return tf.cos(2 * math.pi * freq * time)
 
 
 def delta(a, b, ref, fraction=0.8):
@@ -30,7 +21,7 @@ def delta(a, b, ref, fraction=0.8):
     offset = (length - compare_length) // 2
     a = a[..., offset: offset + length]
     b = b[..., offset: offset + length]
-    return 100 * th.abs(a - b).mean() / ref.std()
+    return float(100 * tf.reduce_mean(tf.abs(a - b)) / tf.math.reduce_std(ref))
 
 
 TOLERANCE = 1  # Tolerance to errors as percentage of the std of the input signal
@@ -94,14 +85,14 @@ class TestResampleFrac(_BaseTest):
         old_sr = 3
         new_sr = 2
         x = pure_tone(7, sr=128, dur=3) + pure_tone(24, sr=128, dur=3)
-        y_re = th.from_numpy(resampy.resample(x.numpy(), old_sr, new_sr)).float()
+        y_re = tf.constant(resampy.resample(x.numpy(), old_sr, new_sr), dtype=tf.float32)
         y = resample.resample_frac(x, old_sr, new_sr)
         self.assertSimilar(y, y_re, x, f"{old_sr} to {new_sr}")
 
         old_sr = 2
         new_sr = 5
         x = pure_tone(7, sr=128) + pure_tone(48, sr=128)
-        y_re = th.from_numpy(resampy.resample(x.numpy(), old_sr, new_sr)).float()
+        y_re = tf.constant(resampy.resample(x.numpy(), old_sr, new_sr), dtype=tf.float32)
         y = resample.resample_frac(x, old_sr, new_sr)
         self.assertSimilar(y, y_re, x, f"{old_sr} to {new_sr}")
 
@@ -114,77 +105,77 @@ class TestResampleFrac(_BaseTest):
         num_zeros = round(len(half_window) / precision)
 
         random.seed(1234)
-        th.manual_seed(1234)
+        tf.random.set_seed(1234)
         for _ in range(10):
             old_sr = random.randrange(8, 128)
             new_sr = random.randrange(8, 128)
-            x = th.randn(1024)
-            y_re = th.from_numpy(resampy.resample(x.numpy(), old_sr, new_sr)).float()
+            x = tf.random.normal((1024,))
+            y_re = tf.constant(resampy.resample(x.numpy(), old_sr, new_sr), dtype=tf.float32)
             y = resample.resample_frac(x, old_sr, new_sr, zeros=num_zeros, rolloff=rolloff)
             # We allow some relatively high tolerance as we are not using the same window.
             self.assertSimilar(y, y_re, x, f"{old_sr} to {new_sr}", tol=3)
 
-    def test_torchscript(self):
+    def test_tf_function(self):
         mod = resample.ResampleFrac(5, 7)
-        x = th.randn(5 * 26)
-        jitted = th.jit.script(mod)
-        self.assertEqual(list(jitted(x).shape), [7 * 26])
+        x = tf.random.normal((5 * 26,))
+        fn = tf.function(mod.__call__)
+        self.assertEqual(list(fn(x).shape), [7 * 26])
 
     def test_constant(self):
-        x = th.ones(4096)
+        x = tf.ones((4096,))
         for zeros in [4, 10]:
             for old_sr in [1, 4, 10]:
                 for new_sr in [1, 4, 10]:
                     y_low = resample.resample_frac(x, old_sr, new_sr, zeros=zeros)
                     self.assertLessEqual(
-                        (y_low - 1).abs().mean(), 1e-6, (zeros, old_sr, new_sr))
+                        float(tf.reduce_mean(tf.abs(y_low - 1))), 1e-6, (zeros, old_sr, new_sr))
 
     def test_default_output_length(self):
-        x = th.ones(1, 2, 32000)
+        x = tf.ones((1, 2, 32000))
 
         resampler = resample.ResampleFrac(old_sr=32000, new_sr=48000)
         y = resampler(x)
-        self.assertEqual(y.shape, (1, 2, 48000))
+        self.assertEqual(tuple(y.shape), (1, 2, 48000))
 
         # Test functional version as well
         y = resample.resample_frac(x, old_sr=32000, new_sr=48000)
-        self.assertEqual(y.shape, (1, 2, 48000))
+        self.assertEqual(tuple(y.shape), (1, 2, 48000))
 
     def test_custom_output_length(self):
-        x = th.ones(1, 32001)
+        x = tf.ones((1, 32001))
 
         resampler = resample.ResampleFrac(old_sr=32000, new_sr=48000)
         y = resampler(x, output_length=48001)
-        self.assertEqual(y.shape, (1, 48001))
+        self.assertEqual(tuple(y.shape), (1, 48001))
 
         # Test functional version as well
         y = resample.resample_frac(x, old_sr=32000, new_sr=48000, output_length=47999)
-        self.assertEqual(y.shape, (1, 47999))
+        self.assertEqual(tuple(y.shape), (1, 47999))
 
     def test_custom_output_length_extreme_resampling(self):
         """
         Resample a signal from 1 hz to 499 hz to check that custom_length works
         correctly without extra internal padding
         """
-        x = th.ones(1, 1)
+        x = tf.ones((1, 1))
 
         resampler = resample.ResampleFrac(old_sr=1, new_sr=499)
         y = resampler(x, output_length=499)
-        self.assertEqual(y.shape, (1, 499))
+        self.assertEqual(tuple(y.shape), (1, 499))
 
         # Test functional version as well
         y = resample.resample_frac(x, old_sr=1, new_sr=499, output_length=3)
-        self.assertEqual(y.shape, (1, 3))
+        self.assertEqual(tuple(y.shape), (1, 3))
 
     def test_custom_output_length_out_of_range(self):
-        x = th.ones(1, 32000)
+        x = tf.ones((1, 32000))
         with self.assertRaisesRegex(
             ValueError, "output_length must be between 0 and 48000"
         ):
             resample.resample_frac(x, old_sr=32000, new_sr=48000, output_length=48002)
 
     def test_full(self):
-        x = th.randn(19)
+        x = tf.random.normal((19,))
         y = resample.resample_frac(x, 7, 1, full=True)
         self.assertEqual(len(y), 3)
         z = resample.resample_frac(y, 5, 1, full=True)
@@ -192,49 +183,26 @@ class TestResampleFrac(_BaseTest):
         x2 = resample.resample_frac(y2, 1, 7, output_length=len(x))
         self.assertEqual(x.shape, x2.shape)
 
-    @unittest.skipUnless(is_onnxruntime_installed, "onnxruntime is not installed")
-    def test_onnx_compatibility(self):
-        import onnxruntime
+    def test_dynamic_length_graph(self):
+        """
+        Trace the resampler with an unknown (dynamic) time dimension inside a `tf.function`
+        and check it produces the right output length for several input sizes. This mirrors
+        the dynamic-input-length scenario that the original library tested through ONNX.
+        """
+        resampler = ResampleFrac(old_sr=32_000, new_sr=16_000)
+        fn = tf.function(
+            lambda t: resampler(t),
+            input_signature=[tf.TensorSpec([1, None], tf.float32)])
 
-        tmp_onnx_file_path = os.path.join(
-            tempfile.gettempdir(), str(uuid.uuid4()) + ".onnx"
-        )
-        try:
-            resampler = ResampleFrac(old_sr=32_000, new_sr=16_000)
-            example_input1 = th.rand(1, 100, dtype=th.float32)
-            example_input2 = th.rand(1, 124, dtype=th.float32)
+        out1 = fn(tf.random.uniform((1, 100)))
+        self.assertEqual(out1.shape[-1], 50)
 
-            th.onnx.export(
-                resampler,
-                (example_input1,),
-                tmp_onnx_file_path,
-                export_params=True,
-                opset_version=11,
-                do_constant_folding=True,
-                input_names=["input"],
-                output_names=["output"],
-                dynamic_axes={
-                    "input": {0: "num_channels", 1: "num_samples"},
-                    "output": {0: "num_channels", 1: "num_samples"},
-                },
-            )
-            onnx_model = onnxruntime.InferenceSession(
-                tmp_onnx_file_path, providers=["CPUExecutionProvider"]
-            )
-            onnxruntime_output = onnx_model.run(
-                ["output"], {"input": example_input2.numpy()}
-            )[0]
-            self.assertEqual(onnxruntime_output.shape[-1], 62)
+        x = tf.random.uniform((1, 124))
+        out2 = fn(x)
+        self.assertEqual(out2.shape[-1], 62)
 
-            torch_output = resampler(example_input2)
-            self.assertEqual(torch_output.shape[-1], 62)
-
-            self.assertSimilar(
-                th.from_numpy(onnxruntime_output), torch_output, example_input2
-            )
-        finally:
-            if os.path.isfile(tmp_onnx_file_path):
-                os.remove(tmp_onnx_file_path)
+        # The graph (traced) output should match the eager one.
+        self.assertSimilar(fn(x), resampler(x), x)
 
 
 if __name__ == '__main__':

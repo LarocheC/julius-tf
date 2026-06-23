@@ -4,7 +4,7 @@
 import random
 import unittest
 
-import torch as th
+import tensorflow as tf
 
 from julius import SplitBands, split_bands
 from julius.core import pure_tone
@@ -16,7 +16,7 @@ def delta(a, b, ref, fraction=0.9):
     offset = (length - compare_length) // 2
     a = a[..., offset: offset + length]
     b = b[..., offset: offset + length]
-    return 100 * th.abs(a - b).mean() / ref.std()
+    return float(100 * tf.reduce_mean(tf.abs(a - b)) / tf.math.reduce_std(ref))
 
 
 TOLERANCE = 0.5  # Tolerance to errors as percentage of the std of the input signal
@@ -29,7 +29,7 @@ class _BaseTest(unittest.TestCase):
 
 class TestLowPassFilters(_BaseTest):
     def setUp(self):
-        th.manual_seed(1234)
+        tf.random.set_seed(1234)
         random.seed(1234)
 
     def test_keep_or_kill(self):
@@ -45,12 +45,12 @@ class TestLowPassFilters(_BaseTest):
         for est, gt, name in zip(decomp, [low, mid, high], ["low", "mid", "high"]):
             self.assertSimilar(est, gt, gt, name)
 
-    def test_torchscript(self):
-        x = th.randn(128)
+    def test_tf_function(self):
+        x = tf.random.normal((128,))
 
         mod = SplitBands(16, 4)
-        jitted = th.jit.script(mod)
-        self.assertEqual(list(jitted(x).shape), [4, 128])
+        fn = tf.function(mod.__call__)
+        self.assertEqual(list(fn(x).shape), [4, 128])
 
     def test_repr(self):
         mod = SplitBands(16, 4, fft=False)

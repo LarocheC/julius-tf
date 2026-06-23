@@ -7,14 +7,14 @@ Those are convenience wrappers around the filters defined in `julius.lowpass`.
 
 from typing import Sequence, Optional
 
-import torch
+import tensorflow as tf
 
 # Import all lowpass filters for consistency.
 from .lowpass import lowpass_filter, lowpass_filters, LowPassFilter,  LowPassFilters  # noqa
 from .utils import simple_repr
 
 
-class HighPassFilters(torch.nn.Module):
+class HighPassFilters(tf.Module):
     """
     Bank of high pass filters. See `julius.lowpass.LowPassFilters` for more
     details on the implementation.
@@ -35,8 +35,8 @@ class HighPassFilters(torch.nn.Module):
             This is likely appropriate for most use. Lower values
             will result in a faster filter, but with a slower attenuation around the
             cutoff frequency.
-        fft (bool or None): if True, uses `julius.fftconv` rather than PyTorch convolutions.
-            If False, uses PyTorch convolutions. If None, either one will be chosen automatically
+        fft (bool or None): if True, uses `julius.fftconv` rather than a regular convolution.
+            If False, uses a regular convolution. If None, either one will be chosen automatically
             depending on the effective filter size.
 
 
@@ -51,8 +51,9 @@ class HighPassFilters(torch.nn.Module):
         - Output: `[F, *, T']`, with `T'=T` if `pad` is True and `stride` is 1, and
             `F` is the numer of cutoff frequencies.
 
+    >>> import tensorflow as tf
     >>> highpass = HighPassFilters([1/4])
-    >>> x = torch.randn(4, 12, 21, 1024)
+    >>> x = tf.random.normal((4, 12, 21, 1024))
     >>> list(highpass(x).shape)
     [1, 4, 12, 21, 1024]
     """
@@ -82,17 +83,16 @@ class HighPassFilters(torch.nn.Module):
     def fft(self):
         return self._lowpasses.fft
 
-    def forward(self, input):
+    def __call__(self, input):
         lows = self._lowpasses(input)
 
         # We need to extract the right portion of the input in case
         # pad is False or stride > 1
         if self.pad:
-            start, end = 0, input.shape[-1]
+            input = input[..., ::self.stride]
         else:
             start = self._lowpasses.half_size
-            end = -start
-        input = input[..., start:end:self.stride]
+            input = input[..., start:-start:self.stride]
         highs = input - lows
         return highs
 
@@ -100,7 +100,7 @@ class HighPassFilters(torch.nn.Module):
         return simple_repr(self)
 
 
-class HighPassFilter(torch.nn.Module):
+class HighPassFilter(tf.Module):
     """
     Same as `HighPassFilters` but applies a single high pass filter.
 
@@ -109,8 +109,9 @@ class HighPassFilter(torch.nn.Module):
         - Input: `[*, T]`
         - Output: `[*, T']`, with `T'=T` if `pad` is True and `stride` is 1.
 
+    >>> import tensorflow as tf
     >>> highpass = HighPassFilter(1/4, stride=1)
-    >>> x = torch.randn(4, 124)
+    >>> x = tf.random.normal((4, 124))
     >>> list(highpass(x).shape)
     [4, 124]
     """
@@ -140,23 +141,23 @@ class HighPassFilter(torch.nn.Module):
     def fft(self):
         return self._highpasses.fft
 
-    def forward(self, input):
+    def __call__(self, input):
         return self._highpasses(input)[0]
 
     def __repr__(self):
         return simple_repr(self)
 
 
-def highpass_filters(input: torch.Tensor,  cutoffs: Sequence[float],
+def highpass_filters(input: tf.Tensor,  cutoffs: Sequence[float],
                      stride: int = 1, pad: bool = True,
                      zeros: float = 8, fft: Optional[bool] = None):
     """
     Functional version of `HighPassFilters`, refer to this class for more information.
     """
-    return HighPassFilters(cutoffs, stride, pad, zeros, fft).to(input)(input)
+    return HighPassFilters(cutoffs, stride, pad, zeros, fft)(input)
 
 
-def highpass_filter(input: torch.Tensor,  cutoff: float,
+def highpass_filter(input: tf.Tensor,  cutoff: float,
                     stride: int = 1, pad: bool = True,
                     zeros: float = 8, fft: Optional[bool] = None):
     """
@@ -166,7 +167,7 @@ def highpass_filter(input: torch.Tensor,  cutoff: float,
     return highpass_filters(input, [cutoff], stride, pad, zeros, fft)[0]
 
 
-class BandPassFilter(torch.nn.Module):
+class BandPassFilter(tf.Module):
     """
     Single band pass filter, implemented as a the difference of two lowpass filters.
 
@@ -189,8 +190,8 @@ class BandPassFilter(torch.nn.Module):
             This is likely appropriate for most use. Lower values
             will result in a faster filter, but with a slower attenuation around the
             cutoff frequency.
-        fft (bool or None): if True, uses `julius.fftconv` rather than PyTorch convolutions.
-            If False, uses PyTorch convolutions. If None, either one will be chosen automatically
+        fft (bool or None): if True, uses `julius.fftconv` rather than a regular convolution.
+            If False, uses a regular convolution. If None, either one will be chosen automatically
             depending on the effective filter size.
 
 
@@ -202,8 +203,9 @@ class BandPassFilter(torch.nn.Module):
     ..Note:: There is no BandPassFilters (bank of bandpasses) because its
         signification would be the same as `julius.bands.SplitBands`.
 
+    >>> import tensorflow as tf
     >>> bandpass = BandPassFilter(1/4, 1/3)
-    >>> x = torch.randn(4, 12, 21, 1024)
+    >>> x = tf.random.normal((4, 12, 21, 1024))
     >>> list(bandpass(x).shape)
     [4, 12, 21, 1024]
     """
@@ -240,7 +242,7 @@ class BandPassFilter(torch.nn.Module):
     def fft(self):
         return self._lowpasses.fft
 
-    def forward(self, input):
+    def __call__(self, input):
         lows = self._lowpasses(input)
         return lows[1] - lows[0]
 
@@ -248,11 +250,11 @@ class BandPassFilter(torch.nn.Module):
         return simple_repr(self)
 
 
-def bandpass_filter(input: torch.Tensor,  cutoff_low: float, cutoff_high: float,
+def bandpass_filter(input: tf.Tensor,  cutoff_low: float, cutoff_high: float,
                     stride: int = 1, pad: bool = True,
                     zeros: float = 8, fft: Optional[bool] = None):
     """
     Functional version of `BandPassfilter`, refer to this class for more information.
     Output will not have a dimension inserted in the front.
     """
-    return BandPassFilter(cutoff_low, cutoff_high, stride, pad, zeros, fft).to(input)(input)
+    return BandPassFilter(cutoff_low, cutoff_high, stride, pad, zeros, fft)(input)

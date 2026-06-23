@@ -4,14 +4,15 @@
 Decomposition of a signal over frequency bands in the waveform domain.
 """
 from typing import Optional, Sequence
-import torch
+
+import tensorflow as tf
 
 from .core import mel_frequencies
 from .lowpass import LowPassFilters
 from .utils import simple_repr
 
 
-class SplitBands(torch.nn.Module):
+class SplitBands(tf.Module):
     """
     Decomposes a signal over the given frequency bands in the waveform domain using
     a cascade of low pass filters as implemented by `julius.lowpass.LowPassFilters`.
@@ -41,8 +42,9 @@ class SplitBands(torch.nn.Module):
         - Output: `[B, *, T']`, with `T'=T` if `pad` is True.
             If `n_bands` was provided, `B = n_bands` otherwise `B = len(cutoffs) + 1`
 
+    >>> import tensorflow as tf
     >>> bands = SplitBands(sample_rate=128, n_bands=10)
-    >>> x = torch.randn(6, 4, 1024)
+    >>> x = tf.random.normal((6, 4, 1024))
     >>> list(bands(x).shape)
     [10, 6, 4, 1024]
     """
@@ -66,32 +68,32 @@ class SplitBands(torch.nn.Module):
                 raise ValueError("You must provide one of n_bands or cutoffs.")
             if not n_bands >= 1:
                 raise ValueError(f"n_bands must be greater than one (got {n_bands})")
-            cutoffs = mel_frequencies(n_bands + 1, 0, sample_rate / 2)[1:-1]
+            cutoffs = mel_frequencies(n_bands + 1, 0, sample_rate / 2).numpy()[1:-1].tolist()
         else:
             if max(cutoffs) > 0.5 * sample_rate:
                 raise ValueError("A cutoff above sample_rate/2 does not make sense.")
         if len(cutoffs) > 0:
-            self.lowpass = LowPassFilters(
+            self.lowpass: Optional[LowPassFilters] = LowPassFilters(
                 [c / sample_rate for c in cutoffs], pad=pad, zeros=zeros, fft=fft)
         else:
-            # Here I cannot make both TorchScript and MyPy happy.
-            # I miss the good old times, before all this madness was created.
-            self.lowpass = None  # type: ignore
+            self.lowpass = None
 
-    def forward(self, input):
+    def __call__(self, input):
         if self.lowpass is None:
-            return input[None]
+            return input[tf.newaxis]
         lows = self.lowpass(input)
+        n = len(self.lowpass.cutoffs)
         low = lows[0]
         bands = [low]
-        for low_and_band in lows[1:]:
+        for i in range(1, n):
+            low_and_band = lows[i]
             # Get a bandpass filter by substracting lowpasses
             band = low_and_band - low
             bands.append(band)
             low = low_and_band
         # Last band is whatever is left in the signal
         bands.append(input - low)
-        return torch.stack(bands)
+        return tf.stack(bands)
 
     @property
     def cutoffs(self):
@@ -106,14 +108,15 @@ class SplitBands(torch.nn.Module):
         return simple_repr(self, overrides={"cutoffs": self._cutoffs})
 
 
-def split_bands(signal: torch.Tensor, sample_rate: float, n_bands: Optional[int] = None,
+def split_bands(signal: tf.Tensor, sample_rate: float, n_bands: Optional[int] = None,
                 cutoffs: Optional[Sequence[float]] = None, pad: bool = True,
                 zeros: float = 8, fft: Optional[bool] = None):
     """
     Functional version of `SplitBands`, refer to this class for more information.
 
-    >>> x = torch.randn(6, 4, 1024)
+    >>> import tensorflow as tf
+    >>> x = tf.random.normal((6, 4, 1024))
     >>> list(split_bands(x, sample_rate=64, cutoffs=[12, 24]).shape)
     [3, 6, 4, 1024]
     """
-    return SplitBands(sample_rate, n_bands, cutoffs, pad, zeros, fft).to(signal)(signal)
+    return SplitBands(sample_rate, n_bands, cutoffs, pad, zeros, fft)(signal)

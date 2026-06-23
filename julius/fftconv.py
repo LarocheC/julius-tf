@@ -2,79 +2,36 @@
 # Author: adefossez, 2020
 
 """
-Implementation of a FFT based 1D convolution in PyTorch.
+Implementation of a FFT based 1D convolution in TensorFlow.
 While FFT is used in CUDNN for small kernel sizes, it is not the case for long ones, e.g. 512.
 This module implements efficient FFT based convolutions for such convolutions. A typical
 application is for evaluationg FIR filters with a long receptive field, typically
 evaluated with a stride of 1.
 """
+import math
 from typing import Optional
 
-import torch
-try:
-    import torch.fft as new_fft
-except ImportError:
-    new_fft = None  # type: ignore
-from torch.nn import functional as F
+import tensorflow as tf
 
-from .core import pad_to, unfold
+from .core import pad_to, unfold, _pad_last
 from .utils import simple_repr
 
 
-# This is quite verbose, but sadly needed to make TorchScript happy.
-def _new_rfft(x: torch.Tensor):
-    z = new_fft.rfft(x, dim=-1)
-    return torch.view_as_real(z)
-
-
-def _old_rfft(x: torch.Tensor):
-    return torch.rfft(x, 1)  # type: ignore
-
-
-def _old_irfft(x: torch.Tensor, length: int):
-    result = torch.irfft(x, 1, signal_sizes=(length,))  # type: ignore
-    return result
-
-
-def _new_irfft(x: torch.Tensor, length: int):
-    x = torch.view_as_complex(x)
-    return new_fft.irfft(x, length, dim=-1)
-
-
-if new_fft is None:
-    _rfft = _old_rfft
-    _irfft = _old_irfft
-else:
-    _rfft = _new_rfft
-    _irfft = _new_irfft
-
-
-def _compl_mul_conjugate(a: torch.Tensor, b: torch.Tensor):
+def _compl_mul_conjugate(a: tf.Tensor, b: tf.Tensor):
     """
-    Given a and b two tensors of dimension 4
-    with the last dimension being the real and imaginary part,
-    returns a multiplied by the conjugate of b, the multiplication
-    being with respect to the second dimension.
-
+    Given `a` and `b` two complex tensors, returns `a` multiplied by the conjugate of `b`,
+    the multiplication being with respect to the channel dimension.
     """
-    # PyTorch 1.7 supports complex number, but not for all operations.
-    # Once the support is widespread, this can likely go away.
-
-    op = "bcft,dct->bdft"
-    return torch.stack([
-        torch.einsum(op, a[..., 0], b[..., 0]) + torch.einsum(op, a[..., 1], b[..., 1]),
-        torch.einsum(op, a[..., 1], b[..., 0]) - torch.einsum(op, a[..., 0], b[..., 1])
-    ],
-                       dim=-1)
+    return tf.einsum("bcft,dct->bdft", a, tf.math.conj(b))
 
 
 def fft_conv1d(
-        input: torch.Tensor, weight: torch.Tensor,
-        bias: Optional[torch.Tensor] = None, stride: int = 1, padding: int = 0,
+        input: tf.Tensor, weight: tf.Tensor,
+        bias: Optional[tf.Tensor] = None, stride: int = 1, padding: int = 0,
         block_ratio: float = 5):
     """
-    Same as `torch.nn.functional.conv1d` but using FFT for the convolution.
-    Please check PyTorch documentation for more information.
+    Same as `tf.nn.conv1d` (with the `torch.nn.functional.conv1d` channels-first convention)
+    but using FFT for the convolution.
 
     Args:
         input (Tensor): input signal of shape `[B, C, T]`.
@@ -93,17 +50,23 @@ def fft_conv1d(
 
 
     ..note::
-        This function is faster than `torch.nn.functional.conv1d` only in specific cases.
+        This function is faster than a regular convolution only in specific cases.
         Typically, the kernel size should be of the order of 256 to see any real gain,
         for a stride of 1.
 
     ..Warning::
         Dilation and groups are not supported at the moment. This function might use
-        more memory than the default Conv1d implementation.
+        more memory than a regular convolution. It also requires the input length to be
+        statically known (e.g. avoid `None` time dimensions inside `tf.function`).
     """
-    input = F.pad(input, (padding, padding))
-    batch, channels, length = input.shape
-    out_channels, _, kernel_size = weight.shape
+    if padding:
+        input = _pad_last(input, padding, padding, value=0.)
+    out_channels = int(weight.shape[0])
+    kernel_size = int(weight.shape[-1])
+    length = input.shape[-1]
+    if length is None:
+        raise RuntimeError("fft_conv1d requires a statically known input length.")
+    length = int(length)
 
     if length < kernel_size:
         raise RuntimeError(f"Input should be at least as large as the kernel size {kernel_size}, "
@@ -112,33 +75,32 @@ def fft_conv1d(
         raise RuntimeError("Block ratio must be greater than 1.")
 
     # We are going to process the input blocks by blocks, as for some reason it is faster
-    # and less memory intensive (I think the culprit is `torch.einsum`.
+    # and less memory intensive (I think the culprit is the einsum).
     block_size: int = min(int(kernel_size * block_ratio), length)
     fold_stride = block_size - kernel_size + 1
     weight = pad_to(weight, block_size)
-    weight_z = _rfft(weight)
+    weight_z = tf.signal.rfft(weight)
 
     # We pad the input and get the different frames, on which
     frames = unfold(input, block_size, fold_stride)
 
-    frames_z = _rfft(frames)
+    frames_z = tf.signal.rfft(frames)
     out_z = _compl_mul_conjugate(frames_z, weight_z)
-    out = _irfft(out_z, block_size)
+    out = tf.signal.irfft(out_z, fft_length=[block_size])
     # The last bit is invalid, because FFT will do a circular convolution.
     out = out[..., :-kernel_size + 1]
-    out = out.reshape(batch, out_channels, -1)
+    out = tf.reshape(out, tf.stack([tf.shape(out)[0], out_channels, -1]))
     out = out[..., ::stride]
     target_length = (length - kernel_size) // stride + 1
     out = out[..., :target_length]
     if bias is not None:
-        out += bias[:, None]
+        out = out + bias[:, tf.newaxis]
     return out
 
 
-class FFTConv1d(torch.nn.Module):
+class FFTConv1d(tf.Module):
     """
-    Same as `torch.nn.Conv1d` but based on `fft_conv1d`.
-    Please check PyTorch documentation for more information.
+    Same as `tf.keras.layers.Conv1D` / `torch.nn.Conv1d` but based on `fft_conv1d`.
 
     Args:
         in_channels (int): number of input channels.
@@ -149,16 +111,17 @@ class FFTConv1d(torch.nn.Module):
         bias (bool): if True, use a bias term.
 
     ..note::
-        This module is faster than `torch.nn.Conv1d` only in specific cases.
+        This module is faster than a regular convolution only in specific cases.
         Typically, `kernel_size` should be of the order of 256 to see any real gain,
         for a stride of 1.
 
     ..warning::
         Dilation and groups are not supported at the moment. This module might use
-        more memory than the default Conv1d implementation.
+        more memory than a regular convolution.
 
+    >>> import tensorflow as tf
     >>> fftconv = FFTConv1d(12, 24, 128, 4)
-    >>> x = torch.randn(4, 12, 1024)
+    >>> x = tf.random.normal((4, 12, 1024))
     >>> print(list(fftconv(x).shape))
     [4, 24, 225]
     """
@@ -171,11 +134,18 @@ class FFTConv1d(torch.nn.Module):
         self.stride = stride
         self.padding = padding
 
-        conv = torch.nn.Conv1d(in_channels, out_channels, kernel_size, bias=bias)
-        self.weight = conv.weight
-        self.bias = conv.bias
+        # Mirror the default initialization of a channels-first 1D convolution.
+        bound = 1 / math.sqrt(in_channels * kernel_size)
+        initializer = tf.random_uniform_initializer(-bound, bound)
+        self.weight = tf.Variable(
+            initializer([out_channels, in_channels, kernel_size]), name="weight")
+        if bias:
+            self.bias: Optional[tf.Variable] = tf.Variable(
+                initializer([out_channels]), name="bias")
+        else:
+            self.bias = None
 
-    def forward(self, input: torch.Tensor):
+    def __call__(self, input: tf.Tensor):
         return fft_conv1d(
             input, self.weight, self.bias, self.stride, self.padding)
 

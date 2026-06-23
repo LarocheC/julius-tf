@@ -5,25 +5,28 @@ import argparse
 import math
 
 import resampy
-import torch as th
+import tensorflow as tf
 
 from julius import resample_frac
 from julius.utils import Chrono, MarkdownTable
 
 
 def test(table, old_sr, new_sr, device="cpu"):
-    x = th.randn(16, 8 * old_sr * int(math.ceil(44_100 / old_sr)), device=device)
+    tf_device = "/GPU:0" if device == "cuda" else "/CPU:0"
+    with tf.device(tf_device):
+        x = tf.random.normal((16, 8 * old_sr * int(math.ceil(44_100 / old_sr))))
 
-    with Chrono() as chrono:
-        y = resample_frac(x, old_sr, new_sr, zeros=56)
+        with Chrono() as chrono:
+            y = resample_frac(x, old_sr, new_sr, zeros=56)
     dur_julius = int(1000 * chrono.duration)
 
     if device == "cpu":
         with Chrono() as chrono:
-            y_resampy = th.from_numpy(resampy.resample(x.numpy(), old_sr, new_sr))
+            y_resampy = tf.constant(
+                resampy.resample(x.numpy(), old_sr, new_sr), dtype=tf.float32)
         dur_resampy = int(1000 * chrono.duration)
 
-        delta = (y_resampy - y).abs().mean()
+        delta = float(tf.reduce_mean(tf.abs(y_resampy - y)))
         table.line([old_sr, new_sr, dur_julius, dur_resampy, format(delta, ".1%")])
     else:
         table.line([old_sr, new_sr, dur_julius])

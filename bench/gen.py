@@ -1,11 +1,11 @@
 import subprocess as sp
-import torch as th
+import tensorflow as tf
 
 
 def run_bench(name, *args, device="cpu"):
     args = list(args)
     args += ["-d", device]
-    if device == "cuda" and not th.cuda.is_available():
+    if device == "cuda" and not tf.config.list_physical_devices('GPU'):
         return "Not available /!\\"
     return sp.check_output(["python3", "-m", f"bench.{name}"] + args).decode('utf8')
 
@@ -37,7 +37,7 @@ On GPU we have:
 
 ### FFTConv1d
 
-We compare to `pytorch.nn.functional.conv1d`, on a input of size [32, 32, 10240],
+We compare to `tf.nn.conv1d`, on a input of size [32, 32, 10240],
 for a convolution with 32 input channels, 64 output channels and various kernel sizes.
 
 On CPU we have:

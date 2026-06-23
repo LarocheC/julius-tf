@@ -5,14 +5,14 @@ build-backend = "hatchling.build"
 [project]
 name = "julius"
 version = "0.2.8"
-description = "Nice DSP sweets: resampling, FFT Convolutions. All with PyTorch, differentiable and with CUDA support."
+description = "Nice DSP sweets: resampling, FFT Convolutions. All with TensorFlow, differentiable and with GPU support."
 readme = "README.md"
 requires-python = ">=3.9.0"
 license = { text = "MIT License" }
 authors = [
     { name = "Alexandre Défossez", email = "alexandre.defossez@gmail.com" },
 ]
-dependencies = ["torch>=1.13.0"]
+dependencies = ["tensorflow>=2.11.0"]
 classifiers = [
     "License :: OSI Approved :: MIT License",
     "Topic :: Multimedia :: Sound/Audio",
@@ -29,18 +29,18 @@ dev = [
     "coverage>=7.0",
     "flake8>=5.0",
     "mypy>=1.0",
-    "onnx>=1.13",
     "pdoc3>=0.10",
+    # resampy is used as a reference implementation when validating resampling.
     "resampy==0.4.3",
-    # Pin numpy alongside torch: `--resolution lowest-direct` lowers torch to 1.13,
-    # which has the numpy-1 ABI and breaks against numpy 2. Listing numpy as a direct
-    # dep makes lowest-direct lower it too (1.21), while the default resolution still
-    # gets numpy 2 with the latest torch.
     "numpy>=1.21",
-    # onnxruntime dropped cp38/cp39 wheels at 1.20; cap it for old Pythons.
-    "onnxruntime>=1.16; python_version >= '3.10'",
-    "onnxruntime>=1.16,<1.20; python_version < '3.10'",
 ]
+
+[tool.mypy]
+# TensorFlow does not ship inline type information (no py.typed marker), so mypy
+# would otherwise fail with `import-untyped` errors. Treat it as untyped instead.
+[[tool.mypy.overrides]]
+module = ["tensorflow", "tensorflow.*"]
+ignore_missing_imports = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["julius"]
