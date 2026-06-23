@@ -16,8 +16,8 @@ jobs:
     - name: Install dependencies
       run: |
         uv sync --extra dev
-        git config --global user.email "alexandre.defossez@gmail.com"
-        git config --global user.name "Alexandre Défossez (autodoc)"
+        git config --global user.email "clement.laroche@gmail.com"
+        git config --global user.name "julius-tf (autodoc)"
 
     - name: Reset branch
       run: |

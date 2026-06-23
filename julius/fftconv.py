@@ -1,5 +1,6 @@
-# File under the MIT license, see https://github.com/adefossez/julius/LICENSE for details.
-# Author: adefossez, 2020
+# File under the MIT license, see https://github.com/LarocheC/julius-tf/blob/main/LICENSE for details.
+# Original author: Alexandre Défossez (adefossez), 2020
+# TensorFlow port: Clément Laroche (LarocheC), 2026
 
 """
 Implementation of a FFT based 1D convolution in TensorFlow.

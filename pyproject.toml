@@ -3,14 +3,18 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "julius"
+name = "julius-tf"
 version = "0.2.8"
-description = "Nice DSP sweets: resampling, FFT Convolutions. All with TensorFlow, differentiable and with GPU support."
+description = "Nice DSP sweets: resampling, FFT Convolutions — a TensorFlow port of Alexandre Défossez's julius, differentiable and with GPU support."
 readme = "README.md"
 requires-python = ">=3.9.0"
 license = { text = "MIT License" }
 authors = [
     { name = "Alexandre Défossez", email = "alexandre.defossez@gmail.com" },
+    { name = "Clément Laroche", email = "clement.laroche@gmail.com" },
+]
+maintainers = [
+    { name = "Clément Laroche", email = "clement.laroche@gmail.com" },
 ]
 dependencies = ["tensorflow>=2.11.0"]
 classifiers = [
@@ -20,7 +24,9 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/adefossez/julius"
+Homepage = "https://github.com/LarocheC/julius-tf"
+Repository = "https://github.com/LarocheC/julius-tf"
+"Original project (PyTorch)" = "https://github.com/adefossez/julius"
 
 [project.optional-dependencies]
 dev = [

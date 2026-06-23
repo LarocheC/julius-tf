@@ -1,5 +1,6 @@
-# File under the MIT license, see https://github.com/adefossez/julius/LICENSE for details.
-# Author: adefossez, 2020
+# File under the MIT license, see https://github.com/LarocheC/julius-tf/blob/main/LICENSE for details.
+# Original author: Alexandre Défossez (adefossez), 2020
+# TensorFlow port: Clément Laroche (LarocheC), 2026
 
 # flake8: noqa
 """
@@ -23,7 +24,7 @@ Along that, you might found useful utilities in:
 - `julius.utils`: Generic utilities.
 
 
-Please checkout [the Github repository](https://github.com/adefossez/julius) for other informations.
+Please checkout [the Github repository](https://github.com/LarocheC/julius-tf) for other informations.
 For a verification of the speed and correctness of Julius, check the benchmark module `bench`.
 
 

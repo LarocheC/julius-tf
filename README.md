@@ -1,25 +1,30 @@
 # Julius, fast TensorFlow based DSP for audio and 1D signals
 
-![linter badge](https://github.com/adefossez/julius/workflows/linter/badge.svg)
-![tests badge](https://github.com/adefossez/julius/workflows/tests/badge.svg)
-![cov badge](https://github.com/adefossez/julius/workflows/cov%3E90%25/badge.svg)
+![linter badge](https://github.com/LarocheC/julius-tf/workflows/linter/badge.svg)
+![tests badge](https://github.com/LarocheC/julius-tf/workflows/tests/badge.svg)
+![cov badge](https://github.com/LarocheC/julius-tf/workflows/cov%3E90%25/badge.svg)
 
 Julius contains different Digital Signal Processing algorithms implemented
 with TensorFlow, so that they are differentiable and available on GPU.
 Note that all the modules implemented here can be used inside a `tf.function`.
 
+> **`julius-tf` is a TensorFlow port of [`julius`](https://github.com/adefossez/julius),
+> the PyTorch DSP library by [Alexandre Défossez](https://github.com/adefossez).** The DSP
+> algorithms and the public API are his work; this project re-implements them on top of
+> TensorFlow. See [Credits](#credits) for full attribution.
+
 For now, I have implemented:
 
-- [julius.resample](https://adefossez.github.io/julius/julius/resample.html): fast sinc resampling.
-- [julius.fftconv](https://adefossez.github.io/julius/julius/fftconv.html): FFT based convolutions.
-- [julius.lowpass](https://adefossez.github.io/julius/julius/lowpass.html): FIR low pass filter banks.
-- [julius.filters](https://adefossez.github.io/julius/julius/filters.html): FIR high pass and band pass filters.
-- [julius.bands](https://adefossez.github.io/julius/julius/bands.html): Decomposition of a waveform signal over mel-scale frequency bands.
+- [julius.resample](https://LarocheC.github.io/julius-tf/julius/resample.html): fast sinc resampling.
+- [julius.fftconv](https://LarocheC.github.io/julius-tf/julius/fftconv.html): FFT based convolutions.
+- [julius.lowpass](https://LarocheC.github.io/julius-tf/julius/lowpass.html): FIR low pass filter banks.
+- [julius.filters](https://LarocheC.github.io/julius-tf/julius/filters.html): FIR high pass and band pass filters.
+- [julius.bands](https://LarocheC.github.io/julius-tf/julius/bands.html): Decomposition of a waveform signal over mel-scale frequency bands.
 
 Along that, you might found useful utilities in:
 
-- [julius.core](https://adefossez.github.io/julius/julius/core.html): DSP related functions.
-- [julius.utils](https://adefossez.github.io/julius/julius/utils.html): Generic utilities.
+- [julius.core](https://LarocheC.github.io/julius-tf/julius/core.html): DSP related functions.
+- [julius.utils](https://LarocheC.github.io/julius-tf/julius/utils.html): Generic utilities.
 
 <p align="center">
 <img src="./logo.png" alt="Representation of the convolutions filters used for the efficient resampling."
@@ -27,9 +32,10 @@ width="500px"></p>
 
 ## News
 
-- This fork ports the whole library from PyTorch to __TensorFlow__, with the goal of
-  contributing the algorithms as a feature for `tf.signal`. The public API is preserved:
-  modules are `tf.Module`s, callable just like before, and usable inside a `tf.function`.
+- `julius-tf` ports the whole library from PyTorch to __TensorFlow__. The public API of the
+  original `julius` is preserved: modules are `tf.Module`s, callable just like before, and
+  usable inside a `tf.function`. Version numbers below track the upstream `julius` releases
+  whose behavior this port reproduces.
 - 03/06/2026: __`julius` 0.2.8 released:__: Switching to pyproject.toml, now requires python >= 3.9. Bug fix with -O flag (thanks @aiknownc)
 - 19/09/2022: __`julius` 0.2.7 released:__: fixed ONNX compat (thanks @iver56). I know I missed the 0.2.6 one...
 - 28/07/2021: __`julius` 0.2.5 released:__: support for setting a custom output length when resampling.
@@ -42,10 +48,11 @@ width="500px"></p>
 
 ## Installation
 
-`julius` requires python 3.6. To install:
+`julius-tf` requires python >= 3.9 and TensorFlow >= 2.11. To install:
 ```bash
-pip3 install -U julius
+pip3 install -U julius-tf
 ```
+The import name stays `julius` (i.e. `pip install julius-tf` then `import julius`).
 
 
 ## Usage
@@ -140,17 +147,30 @@ python3 -m bench.gen
 
 ## License
 
-`julius` is released under the MIT license.
+`julius-tf` is released under the MIT license, the same license as the original `julius`.
+The license retains the original copyright of Alexandre Défossez (2020) alongside the
+copyright for the TensorFlow port (2026). See [LICENSE](./LICENSE).
+
+## Credits
+
+This project is a TensorFlow port of [`julius`](https://github.com/adefossez/julius) by
+[**Alexandre Défossez**](https://github.com/adefossez). All of the DSP algorithms, the
+overall design, and the public API originate from his original PyTorch implementation —
+full credit for the underlying work goes to him. This repository only re-implements those
+algorithms on top of TensorFlow.
+
+- Original project: https://github.com/adefossez/julius (MIT, © 2020 Alexandre Défossez)
+- TensorFlow port: Clément Laroche ([@LarocheC](https://github.com/LarocheC))
 
 ## Thanks
 
 This package is named in the honor of
 [Julius O. Smith](https://ccrma.stanford.edu/~jos/),
-whose books and website were a gold mine of information for me to learn about DSP. Go checkout his website if you want
+whose books and website were a gold mine of information for learning about DSP. Go checkout his website if you want
 to learn more about DSP.
 
 
 [resample]: https://ccrma.stanford.edu/~jos/resample/resample.html
 [resampy]: https://resampy.readthedocs.io/
-[docs]:  https://adefossez.github.io/julius/julius/index.html
+[docs]:  https://LarocheC.github.io/julius-tf/julius/index.html
 [bench]:  ./bench.md
