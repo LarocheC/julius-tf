@@ -137,7 +137,10 @@ class ResampleFrac(tf.Module):
         y = tf.transpose(ys, [0, 2, 1])  # [N, T', new_sr]
         y = tf.reshape(y, tf.concat([shape[:-1], [-1]], axis=0))
 
-        float_output_length = tf.cast(self.new_sr * length, tf.float64) / self.old_sr
+        # Cast `length` to float64 *before* multiplying: `length` is an int32 tensor
+        # (from tf.shape), so `self.new_sr * length` would overflow int32 for large
+        # sample rates (e.g. 30001 * 480024 wraps around) before the cast applied.
+        float_output_length = self.new_sr * tf.cast(length, tf.float64) / self.old_sr
         max_output_length = tf.cast(tf.math.ceil(float_output_length), tf.int32)
         default_output_length = tf.cast(tf.math.floor(float_output_length), tf.int32)
 
